@@ -6,12 +6,24 @@ from config import DB_PATH, TURSO_DATABASE_URL, TURSO_AUTH_TOKEN
 
 logger = logging.getLogger(__name__)
 
+def normalize_turso_url(url: str) -> str:
+    """Ensure Turso URL uses https:// instead of libsql:// or wss:// to avoid WebSocket handshake errors."""
+    url = url.strip()
+    if url.startswith("libsql://"):
+        return "https://" + url[len("libsql://"):]
+    elif url.startswith("wss://"):
+        return "https://" + url[len("wss://"):]
+    elif not url.startswith("https://") and not url.startswith("http://"):
+        return "https://" + url
+    return url
+
 def is_turso_enabled() -> bool:
     return bool(TURSO_DATABASE_URL)
 
 def get_turso_client():
     import libsql_client
-    return libsql_client.create_client_sync(url=TURSO_DATABASE_URL, auth_token=TURSO_AUTH_TOKEN)
+    target_url = normalize_turso_url(TURSO_DATABASE_URL)
+    return libsql_client.create_client_sync(url=target_url, auth_token=TURSO_AUTH_TOKEN)
 
 def get_sqlite_conn() -> sqlite3.Connection:
     conn = sqlite3.connect(DB_PATH)
@@ -21,33 +33,39 @@ def get_sqlite_conn() -> sqlite3.Connection:
 def execute_write(query: str, params: tuple = ()) -> int:
     """Executes an INSERT / UPDATE / DELETE statement and returns last_insert_rowid if available."""
     if is_turso_enabled():
-        client = get_turso_client()
         try:
-            res = client.execute(query, list(params))
-            return res.last_insert_rowid or 0
-        finally:
-            client.close()
-    else:
-        with get_sqlite_conn() as conn:
-            cursor = conn.cursor()
-            cursor.execute(query, params)
-            conn.commit()
-            return cursor.lastrowid or 0
+            client = get_turso_client()
+            try:
+                res = client.execute(query, list(params))
+                return res.last_insert_rowid or 0
+            finally:
+                client.close()
+        except Exception as e:
+            logger.error(f"Turso write failed ({e}), falling back to local SQLite.")
+
+    with get_sqlite_conn() as conn:
+        cursor = conn.cursor()
+        cursor.execute(query, params)
+        conn.commit()
+        return cursor.lastrowid or 0
 
 def execute_read(query: str, params: tuple = ()) -> List[Dict[str, Any]]:
     """Executes a SELECT query and returns a list of dictionaries."""
     if is_turso_enabled():
-        client = get_turso_client()
         try:
-            res = client.execute(query, list(params))
-            return [dict(zip(res.columns, row)) for row in res.rows]
-        finally:
-            client.close()
-    else:
-        with get_sqlite_conn() as conn:
-            cursor = conn.cursor()
-            cursor.execute(query, params)
-            return [dict(row) for row in cursor.fetchall()]
+            client = get_turso_client()
+            try:
+                res = client.execute(query, list(params))
+                return [dict(zip(res.columns, row)) for row in res.rows]
+            finally:
+                client.close()
+        except Exception as e:
+            logger.error(f"Turso read failed ({e}), falling back to local SQLite.")
+
+    with get_sqlite_conn() as conn:
+        cursor = conn.cursor()
+        cursor.execute(query, params)
+        return [dict(row) for row in cursor.fetchall()]
 
 def init_db():
     """Initialize database tables for car trips, transit expenses, and user settings."""
