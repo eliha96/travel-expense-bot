@@ -20,10 +20,24 @@ def normalize_turso_url(url: str) -> str:
 def is_turso_enabled() -> bool:
     return bool(TURSO_DATABASE_URL)
 
+_turso_client = None
+
 def get_turso_client():
-    import libsql_client
-    target_url = normalize_turso_url(TURSO_DATABASE_URL)
-    return libsql_client.create_client_sync(url=target_url, auth_token=TURSO_AUTH_TOKEN)
+    global _turso_client
+    if _turso_client is None:
+        import libsql_client
+        target_url = normalize_turso_url(TURSO_DATABASE_URL)
+        _turso_client = libsql_client.create_client_sync(url=target_url, auth_token=TURSO_AUTH_TOKEN)
+    return _turso_client
+
+def reset_turso_client():
+    global _turso_client
+    if _turso_client is not None:
+        try:
+            _turso_client.close()
+        except Exception:
+            pass
+        _turso_client = None
 
 def get_sqlite_conn() -> sqlite3.Connection:
     conn = sqlite3.connect(DB_PATH)
@@ -35,13 +49,11 @@ def execute_write(query: str, params: tuple = ()) -> int:
     if is_turso_enabled():
         try:
             client = get_turso_client()
-            try:
-                res = client.execute(query, list(params))
-                return res.last_insert_rowid or 0
-            finally:
-                client.close()
+            res = client.execute(query, list(params))
+            return res.last_insert_rowid or 0
         except Exception as e:
             logger.error(f"Turso write failed ({e}), falling back to local SQLite.")
+            reset_turso_client()
 
     with get_sqlite_conn() as conn:
         cursor = conn.cursor()
@@ -54,13 +66,11 @@ def execute_read(query: str, params: tuple = ()) -> List[Dict[str, Any]]:
     if is_turso_enabled():
         try:
             client = get_turso_client()
-            try:
-                res = client.execute(query, list(params))
-                return [dict(zip(res.columns, row)) for row in res.rows]
-            finally:
-                client.close()
+            res = client.execute(query, list(params))
+            return [dict(zip(res.columns, row)) for row in res.rows]
         except Exception as e:
             logger.error(f"Turso read failed ({e}), falling back to local SQLite.")
+            reset_turso_client()
 
     with get_sqlite_conn() as conn:
         cursor = conn.cursor()
@@ -110,8 +120,12 @@ def init_db():
         )
     """)
 
+_registered_cache = set()
+
 def save_chat_id(chat_id: int, username: str = "", first_name: str = ""):
     """Saves or updates active chat ID to receive automated reminders and reports."""
+    if chat_id in _registered_cache:
+        return
     execute_write("""
         INSERT INTO registered_chats (chat_id, username, first_name, updated_at)
         VALUES (?, ?, ?, CURRENT_TIMESTAMP)
@@ -120,6 +134,7 @@ def save_chat_id(chat_id: int, username: str = "", first_name: str = ""):
             first_name=excluded.first_name,
             updated_at=CURRENT_TIMESTAMP
     """, (chat_id, username or "", first_name or ""))
+    _registered_cache.add(chat_id)
 
 def get_registered_chat_ids() -> List[int]:
     """Returns all registered chat IDs that should receive reminders and reports."""
