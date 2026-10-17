@@ -19,3 +19,7 @@ services:
         value: "1.40"
       - key: AUTHORIZED_USER_ID
         sync: false
+      - key: TURSO_DATABASE_URL
+        sync: false
+      - key: TURSO_AUTH_TOKEN
+        sync: false

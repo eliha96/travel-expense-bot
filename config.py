@@ -28,3 +28,7 @@ RATE_PER_KM = float(os.getenv("RATE_PER_KM", "1.40"))
 
 # Authorized Telegram User ID (Optional security lock so only the owner can use the bot)
 AUTHORIZED_USER_ID = os.getenv("AUTHORIZED_USER_ID", "")
+
+# Turso Cloud SQLite Settings (Optional - provides permanent 24/7 cloud persistence)
+TURSO_DATABASE_URL = os.getenv("TURSO_DATABASE_URL", "")
+TURSO_AUTH_TOKEN = os.getenv("TURSO_AUTH_TOKEN", "")
