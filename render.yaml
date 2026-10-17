@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: travel-expense-bot
+    env: python
+    region: frankfurt
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python bot.py
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.0
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: ORIGIN_ADDRESS
+        value: "הכ\"ג 5, הרצליה"
+      - key: RATE_PER_KM
+        value: "1.40"
+      - key: AUTHORIZED_USER_ID
+        sync: false

@@ -1,0 +1,23 @@
+# Environment variables & secrets
+.env
+.env.local
+
+# Python cache & virtual environments
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.venv/
+venv/
+ENV/
+
+# Local databases & user data
+data/expenses.db
+data/receipts/
+data/reports/
+
+# Scratch & test scripts
+test_*.py
+scratch/
+.DS_Store
+Thumbs.db
